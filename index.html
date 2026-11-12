@@ -35,6 +35,8 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .t details{margin:0 0 8px}.t div{font-size:12px;color:var(--dim);padding:2px 0}
 .warn{margin-top:8px;padding:8px;border-radius:8px;background:#5a2a2a;font-size:14px}
 #sysrow{padding:6px 12px;background:#08172a}#sysrow select{width:100%}
+mark{background:#f2b63255;color:inherit;border-radius:3px;padding:0 2px}
+.res{background:var(--card2);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:14px;cursor:pointer}
 .ok{margin-top:8px;font-size:13px;color:var(--ok)}
 .chip,.a button{font-size:12px;background:var(--card2);color:var(--ink);border:1px solid #2f6396;border-radius:999px;padding:5px 10px}
 a.cite{color:var(--acc);font-weight:700;cursor:pointer;text-decoration:underline}
@@ -83,6 +85,7 @@ progress{width:100%}
     <select id="model"></select>
     <label class="ck"><input type="checkbox" id="deep" checked> <span><b>Deep mode</b>: diagnose, search several times, read pages, ask you questions, and double-check every figure (slower, much more reliable)</span></label>
     <div class="row"><button class="btn g" id="wake">Download / wake AI now</button></div>
+    <div id="diag" class="dim" style="margin:6px 0"></div>
     <small>First download needs Wi-Fi: keep the screen on and this page open (it keeps the screen awake for you). Finished parts are saved, so if it stops, tap the button again to resume. After that it works with no internet.</small>
   </div>
   <div class="box">
@@ -276,24 +279,52 @@ async function importPack(file){
 
 /* ---------- LLM (WebLLM, on-device) ---------- */
 const MODELS=[
- ['none','Search only · no AI download (works now, any phone)'],
- ['SmolLM2-360M-Instruct-q4f16_1-MLC','Lightest AI · smallest download (≈0.3 GB)'],
- ['Llama-3.2-1B-Instruct-q4f16_1-MLC','Fast · most phones (≈0.7 GB)'],
- ['Qwen3-1.7B-q4f16_1-MLC','Reasoning · newer phones (≈1.2 GB)'],
- ['Phi-3.5-mini-instruct-q4f16_1-MLC','Smartest · 6 GB+ RAM phones (≈2.3 GB)']];
-let ENG=null,ENGID=null,WL=null,busy=false,history=[];
+ ['auto','Auto · best for this device (recommended)'],
+ ['none','Search only · no AI'],
+ ['cpu:qwen05','CPU · Qwen2.5-0.5B · works on any device (≈0.4 GB)'],
+ ['cpu:qwen15','CPU · Qwen2.5-1.5B · smarter, slower (≈1.1 GB)'],
+ ['SmolLM2-360M-Instruct-q4f16_1-MLC','GPU · Lightest (≈0.3 GB)'],
+ ['Llama-3.2-1B-Instruct-q4f16_1-MLC','GPU · Fast (≈0.7 GB)'],
+ ['Qwen3-1.7B-q4f16_1-MLC','GPU · Reasoning (≈1.2 GB)'],
+ ['Phi-3.5-mini-instruct-q4f16_1-MLC','GPU · Smartest, 6 GB+ RAM (≈2.3 GB)']];
+const CPUM={'cpu:qwen05':['Qwen/Qwen2.5-0.5B-Instruct-GGUF','qwen2.5-0.5b-instruct-q4_k_m.gguf'],'cpu:qwen15':['Qwen/Qwen2.5-1.5B-Instruct-GGUF','qwen2.5-1.5b-instruct-q4_k_m.gguf']};
+const WLLAMA='https://cdn.jsdelivr.net/npm/@wllama/wllama@2/esm/';
+let ENG=null,ENGID=null,WL=null,WLL=null,BACKEND=null,busy=false,history=[],GPUOK=null,AIERR='';
 const isQwen=()=>(ENGID||'').includes('Qwen3');
+async function gpuOk(){if(GPUOK!==null)return GPUOK;try{GPUOK=!!(navigator.gpu&&await navigator.gpu.requestAdapter())}catch{GPUOK=false}return GPUOK}
+async function pickModel(){
+  const v=$('#model').value;if(v==='none')return 'none';
+  if(v.startsWith('cpu:'))return v;
+  if(!(await gpuOk()))return 'cpu:qwen05';
+  return v==='auto'?'Llama-3.2-1B-Instruct-q4f16_1-MLC':v;
+}
 async function loadLLM(onProg){
-  if(!navigator.gpu)throw new Error('This phone/browser has no WebGPU, so the on-device AI cannot run. Search-only mode is used.');
-  const id=$('#model').value;if(id==='none')throw new Error('"Search only" is selected. Pick an AI model above first.');
-  if(ENG&&ENGID===id)return;
-  if(ENG){try{await ENG.unload()}catch{}ENG=null}
-  WL=WL||await import(WEBLLM);
+  const id=await pickModel();
+  if(id==='none')throw new Error('"Search only" is selected. Pick an AI model first.');
+  if(ENGID===id)return;
   let lock=null;try{lock=await navigator.wakeLock?.request('screen')}catch{}
-  try{ENG=await WL.CreateMLCEngine(id,{initProgressCallback:p=>onProg&&onProg(p)})}finally{try{await lock?.release()}catch{}}
-  ENGID=id;status();
+  try{
+    if(id.startsWith('cpu:')){
+      if(!WLL){const m=await import(WLLAMA+'index.js');WLL=new m.Wllama({'single-thread/wllama.wasm':WLLAMA+'single-thread/wllama.wasm','multi-thread/wllama.wasm':WLLAMA+'multi-thread/wllama.wasm'})}
+      const [repo,file]=CPUM[id];
+      await WLL.loadModelFromHF(repo,file,{n_ctx:4096,progressCallback:({loaded,total})=>onProg&&onProg({progress:total?loaded/total:0})});
+      BACKEND='cpu';
+    }else{
+      if(ENG){try{await ENG.unload()}catch{}ENG=null}
+      WL=WL||await import(WEBLLM);
+      ENG=await WL.CreateMLCEngine(id,{initProgressCallback:p=>onProg&&onProg(p)});
+      BACKEND='gpu';
+    }
+    ENGID=id;AIERR='';
+  }finally{try{await lock?.release()}catch{}}
+  status();
 }
 async function gen(messages,{max=700,temp=.3,onToken}={}){
+  if(BACKEND==='cpu'){
+    let last='';
+    const out=await WLL.createChatCompletion(messages,{nPredict:max,sampling:{temp},onNewToken:(t,pc,cur)=>{last=cur;onToken&&onToken(cur)}});
+    return (typeof out==='string'&&out)||last;
+  }
   let out='';const s=await ENG.chat.completions.create({messages,stream:true,temperature:temp,max_tokens:isQwen()?Math.max(max,1400):max});
   for await(const c of s){const d=c.choices[0]?.delta?.content||'';if(d){out+=d;onToken&&onToken(out)}}return out;
 }
@@ -313,7 +344,7 @@ Format:
 Put the source tag like [S2] after every step or fact. Copy part numbers, torque values and clearances exactly as written in the sources; never invent them. If the sources do not cover the question, say so plainly and say what to inspect or who to ask. Keep it short and practical for a technician in a workshop.`;
 
 /* ---------- UI helpers ---------- */
-function status(){$('#stat').textContent=`AI: ${ENG?'ready ('+ENGID.split('-q4')[0]+')':(navigator.gpu&&$('#model')?.value!=='none'?'not loaded':'search-only')} · Library: ${CH.length} passages · ${navigator.onLine?'online':'offline'}`}
+function status(){$('#stat').textContent=`AI: ${ENGID?'ready ('+(BACKEND==='cpu'?'CPU':'GPU')+')':($('#model')?.value==='none'?'off (search only)':'not loaded yet')} · Library: ${CH.length} passages · ${navigator.onLine?'online':'offline'}`}
 function refreshShips(){
   const ships=[...new Set(CH.map(c=>c.ship))].sort();const cur=$('#ship').value;
   $('#ship').innerHTML='<option value="">All ships</option>'+ships.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
@@ -447,12 +478,21 @@ async function deepAsk(q,ship,el){
 
 /* ---------- ask (agent pipeline) ---------- */
 async function ensureLLM(el){
-  if($('#model').value==='none')return false;
-  if(ENG&&ENGID===$('#model').value)return true;
-  if(!navigator.gpu)return false;
-  try{await loadLLM(p=>setEl(el,`<i>Loading AI model… ${Math.round((p.progress||0)*100)}%<br><small>One-time download. Keep this page open.</small></i>`));return true}
-  catch(e){setEl(el,'<i>AI could not load ('+esc(e.message||e)+'). Using search-only mode.</i>');return false}
+  let id=await pickModel();
+  if(id==='none')return false;
+  if(ENGID===id)return true;
+  const tryLoad=async()=>{
+    id=await pickModel();
+    await loadLLM(p=>setEl(el,`<i>Loading AI (${id.startsWith('cpu:')?'CPU':'GPU'})… ${Math.round((p.progress||0)*100)}%<br><small>One-time download. Keep this page open.</small></i>`));
+  };
+  try{await tryLoad();return true}
+  catch(e){
+    if(!id.startsWith('cpu:')&&$('#model').value==='auto'){GPUOK=false;try{await tryLoad();return true}catch(e2){e=e2}}
+    AIERR=String(e.message||e);return false;
+  }
 }
+function hl(text,q){const ws=[...new Set(tok(q).filter(w=>w.length>2))].map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));if(!ws.length)return esc(text);const re=new RegExp('('+ws.join('|')+')','gi');return text.split(re).map((p,i)=>i%2?'<mark>'+esc(p)+'</mark>':esc(p)).join('')}
+function snip(text,q,len=380){const low=text.toLowerCase();let i=0;for(const w of tok(q).filter(w=>w.length>2)){const k=low.indexOf(w);if(k>=0){i=k;break}}const st=Math.max(0,i-80);return (st?'…':'')+text.slice(st,st+len)+(st+len<text.length?'…':'')}
 async function ask(q){
   addMsg('user',esc(q).replace(/\n/g,'<br>'));
   const cv=convert(q);if(cv){addMsg('bot',esc(cv));return}
@@ -460,14 +500,18 @@ async function ask(q){
   const ship=$('#ship').value;
   const el=addMsg('bot','<i>Starting…</i>');
   const llm=await ensureLLM(el);
-  if(llm&&$('#deep').checked)return deepAsk(q,ship,el);
+  if(llm&&$('#deep').checked&&BACKEND!=='cpu')return deepAsk(q,ship,el);
   let queries=[q];
-  if(llm){try{setEl(el,'<i>Planning search…</i>');queries=[q,...await rewrite(q,ship)]}catch{}}
+  if(llm&&BACKEND!=='cpu'){try{setEl(el,'<i>Planning search…</i>');queries=[q,...await rewrite(q,ship)]}catch{}}
   setEl(el,'<i>Searching manuals…</i>');
-  const hits=await search(queries,ship,5);
+  const hits=await search(queries,ship,BACKEND==='cpu'?4:5);
   if(!hits.length){setEl(el,'Nothing in the loaded manuals matches. Try different words, or check the selected ship.');return}
   el._src=hits;
-  if(!llm){setEl(el,'<b>Best matches in the manuals</b> <small>(AI not running on this device)</small><br><br>'+hits.map((h,i)=>`<b>[S${i+1}]</b> ${esc(h.ship)} · ${esc(h.doc)} p.${h.page}<br>${esc(h.text.slice(0,420))}…`).join('<br><br>'));addSrc(el);return}
+  if(!llm){
+    const why=AIERR?`<div class="warn">AI could not start: ${esc(AIERR)}</div>`:'<small>The AI is switched off. Pick a model in Library for step-by-step repair answers.</small>';
+    setEl(el,`<b>Best matches in your manuals</b> <small>(tap a card for the full text and page)</small>${why}`+hits.map((h,i)=>`<div class="res" data-s="${i+1}"><b>S${i+1}</b> · ${esc(h.ship)} · ${esc(h.doc)} · p.${h.page}<br><small>${esc((h.tags||[]).join(' · '))}</small><br>${hl(snip(h.text,q),q)}</div>`).join(''));
+    addSrc(el);return
+  }
   const ctx=hits.map((h,i)=>`[S${i+1}] (${h.ship} · ${h.doc} · p.${h.page})\n${h.text}`).join('\n\n');
   const msgs=[{role:'system',content:SYS},...history.slice(-4),{role:'user',content:`SOURCES:\n${ctx}\n\nQUESTION: ${q}`}];
   setEl(el,'<i>Thinking…</i>');
@@ -569,7 +613,8 @@ addEventListener('online',status);addEventListener('offline',status);
 
 /* ---------- boot ---------- */
 await openDB();await loadIndex();
-addMsg('bot',`<b>Welcome.</b> Pick a ship at the top, then describe the fault, speak it 🎤, or photograph a part 📷. I answer only from the loaded manuals and show the page I used.<br><small>Tip: type “45 ft-lb to Nm” for quick unit conversions. Open <b>Library</b> to add manuals.</small>`);
+gpuOk().then(g=>{$('#diag').textContent=g?'✓ This device supports the fast GPU AI.':'This device has no usable WebGPU, so Auto uses the CPU AI (works everywhere, slower).';status()});
+addMsg('bot',`<b>Welcome.</b> Pick a ship at the top, then describe the fault, speak it 🎤, or photograph a part 📷. I answer only from the loaded manuals and show the page I used. The AI loads the first time you ask (one-time download).<br><small>Tip: type “45 ft-lb to Nm” for quick unit conversions. Open <b>Library</b> to add manuals.</small>`);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 if(navigator.storage?.persist)navigator.storage.persist();
 </script>
