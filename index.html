@@ -34,6 +34,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .s,.a{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .t details{margin:0 0 8px}.t div{font-size:12px;color:var(--dim);padding:2px 0}
 .warn{margin-top:8px;padding:8px;border-radius:8px;background:#5a2a2a;font-size:14px}
+#sysrow{padding:6px 12px;background:#08172a}#sysrow select{width:100%}
 .ok{margin-top:8px;font-size:13px;color:var(--ok)}
 .chip,.a button{font-size:12px;background:var(--card2);color:var(--ink);border:1px solid #2f6396;border-radius:999px;padding:5px 10px}
 a.cite{color:var(--acc);font-weight:700;cursor:pointer;text-decoration:underline}
@@ -65,6 +66,7 @@ progress{width:100%}
 <nav><button data-t="chat" class="on">Chat</button><button data-t="lib">Library</button><button data-t="logs">Logs</button></nav>
 <main>
 <section id="chat" class="tab">
+  <div id="sysrow"><select id="sys" aria-label="System"></select></div>
   <div id="msgs"></div>
   <div id="bar">
     <button class="ib" id="cam" title="Photo">📷</button>
@@ -129,26 +131,56 @@ const del=(n,k)=>rq(st(n,'readwrite').delete(k));
 const clearStore=n=>rq(st(n,'readwrite').clear());
 const putMany=(n,arr)=>new Promise((res,rej)=>{const t=db.transaction(n,'readwrite');const s=t.objectStore(n);arr.forEach(v=>s.put(v));t.oncomplete=()=>res();t.onerror=()=>rej(t.error)});
 
+/* ---------- system tags (auto-categorisation) ---------- */
+const SYSTEMS={
+ 'Propulsion & Engine':/\b(engine|diesel|piston|cylinder|crankshaft|camshaft|injector|turbo(?:charger)?|valve clearance|combustion|cylinder head|rpm|outboard|propulsion)\b/gi,
+ 'Fuel':/\b(fuel|injection pump|day tank|fuel filter|primer|separator|bleed(?:ing)?|lift pump)\b/gi,
+ 'Cooling':/\b(coolant|cooling|radiator|heat exchanger|thermostat|raw water|sea water|seawater|impeller|antifreeze|overheat\w*)\b/gi,
+ 'Lubrication':/\b(lube|lubricat\w*|engine oil|oil filter|oil pressure|oil pump|oil cooler|sump|grease|greasing)\b/gi,
+ 'Gearbox & Shafting':/\b(gearbox|reduction gear|transmission|clutch|propeller|prop shaft|shaft|stern tube|coupling|thrust bearing|gland|cutlass)\b/gi,
+ 'Electrical & Power':/\b(electrical|generator|alternator|batter(?:y|ies)|switchboard|breaker|circuit|wiring|voltage|volts?|starter motor|fuse|inverter|shore power)\b/gi,
+ 'Electronics & Comms':/\b(radar|gps|chartplotter|sonar|vhf|radio|antenna|ais|nmea|autopilot|navigation|compass|echo sounder|communications?)\b/gi,
+ 'Hydraulics & Steering':/\b(hydraulic\w*|steering|rudder|helm|actuator|trim tab|windlass|winch)\b/gi,
+ 'Pumps, Piping & Bilge':/\b(bilge|pump|pumps|piping|valve|valves|seacock|strainer|manifold|sanitary|ballast|fire main|eductor)\b/gi,
+ 'HVAC & Refrigeration':/\b(air conditioning|hvac|refrigerat\w*|compressor|condenser|evaporator|chiller|freon|ventilation|blower)\b/gi,
+ 'Hull & Structure':/\b(hull|frames?|keel|bulkhead|plating|weld\w*|corrosion|antifouling|fib(?:re|er)glass|gelcoat|dry ?dock|anodes?|zinc)\b/gi,
+ 'Deck & Mooring':/\b(anchor|mooring|davit|crane|capstan|fender|hatch|lifting|towing)\b/gi,
+ 'Safety & Firefighting':/\b(fire|extinguisher|sprinkler|life ?raft|lifejacket|alarm|emergency|co2|foam|detector|safety|lifeboat)\b/gi
+};
+function tagsFor(text,doc){
+  const d=(doc||'').replace(/[_\-\.]+/g,' ');const sc=[];
+  for(const [name,re] of Object.entries(SYSTEMS)){
+    const s=(text.match(re)||[]).length+(d.match(re)||[]).length*3;
+    if(s>=2)sc.push([name,s]);
+  }
+  sc.sort((a,b)=>b[1]-a[1]);
+  return sc.length?sc.slice(0,2).map(x=>x[0]):['General'];
+}
+
 /* ---------- index + search ---------- */
 let CH=[],DF=new Map(),AVG=1;
 const tok=s=>(s.toLowerCase().match(/[a-z0-9][a-z0-9\-\/\.]*[a-z0-9]|[a-z0-9]/g)||[]);
 function prep(c){const t=tok(c.text);c.len=t.length;c.tf=new Map();for(const w of t)c.tf.set(w,(c.tf.get(w)||0)+1)}
 async function loadIndex(){
   const rows=await getAll('chunks');
-  CH=rows.map(r=>({...r,emb:r.emb?Float32Array.from(r.emb,v=>v/127):null}));
+  CH=rows.map(r=>({...r,tags:r.tags||tagsFor(r.text,r.doc),emb:r.emb?Float32Array.from(r.emb,v=>v/127):null}));
   CH.forEach(prep);DF=new Map();let tot=0;
   for(const c of CH){tot+=c.len;for(const t of c.tf.keys())DF.set(t,(DF.get(t)||0)+1)}
   AVG=(tot/Math.max(CH.length,1))||1;refreshShips();status();
 }
 function bm25(q,c){let s=0;const N=CH.length;for(const t of q){const f=c.tf.get(t);if(!f)continue;const df=DF.get(t)||0;s+=Math.log(1+(N-df+.5)/(df+.5))*f*2.4/(f+1.4*(.25+.75*c.len/AVG))}return s}
 async function search(queries,ship,k=5){
-  const pool=CH.filter(c=>!ship||c.ship===ship);const score=new Map();
+  const sys=$('#sys')?.value||'';
+  let pool=CH.filter(c=>!ship||c.ship===ship);
+  if(sys){const p2=pool.filter(c=>c.tags.includes(sys));if(p2.length)pool=p2}
+  const score=new Map();
   for(const q of queries){
-    const qt=tok(q);let qe=null;
+    const qt=tok(q);const qg=tagsFor(q,'').filter(t=>t!=='General');let qe=null;
     if(pool.some(c=>c.emb))qe=await embedOne(q).catch(()=>null);
     const b=pool.map(c=>bm25(qt,c));const mx=b.reduce((a,x)=>Math.max(a,x),1e-9);
     pool.forEach((c,i)=>{let s=b[i]/mx;
       if(qe&&c.emb){let d=0;for(let j=0;j<qe.length;j++)d+=qe[j]*c.emb[j];s=.4*s+.6*Math.max(d,0)}
+      if(s>.05&&qg.some(t=>c.tags.includes(t)))s+=.1;
       if(s>(score.get(c)||0))score.set(c,s)});
   }
   return [...score].sort((a,b)=>b[1]-a[1]).slice(0,k).filter(x=>x[1]>.08).map(x=>x[0]);
@@ -212,7 +244,7 @@ async function ingest(file,ship,doOcr,prog){
   }else{
     const t=await file.text();for(let i=0,p=1;i<t.length;i+=3000,p++)pages.push({page:p,text:t.slice(i,i+3000)});
   }
-  const rows=[];for(const pg of pages)for(const tx of chunkText(pg.text))rows.push({ship,doc,page:pg.page,text:tx});
+  const rows=[];for(const pg of pages)for(const tx of chunkText(pg.text))rows.push({ship,doc,page:pg.page,text:tx,tags:tagsFor(tx,doc)});
   let embOk=true;
   for(let i=0;i<rows.length&&embOk;i+=16){
     prog(`${doc}: indexing ${Math.min(i+16,rows.length)}/${rows.length}`,50+i/rows.length*50);
@@ -228,7 +260,7 @@ const b64=u=>{let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.app
 const unb64=s=>{const b=atob(s);const u=new Int8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i)<<24>>24;return u};
 async function exportPack(){
   const ship=$('#ship').value;
-  const chunks=(await getAll('chunks')).filter(c=>!ship||c.ship===ship).map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,emb:c.emb?b64(new Uint8Array(c.emb.buffer,c.emb.byteOffset,c.emb.length)):null}));
+  const chunks=(await getAll('chunks')).filter(c=>!ship||c.ship===ship).map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,tags:c.tags||tagsFor(c.text,c.doc),emb:c.emb?b64(new Uint8Array(c.emb.buffer,c.emb.byteOffset,c.emb.length)):null}));
   const pages=(await getAll('pages')).filter(p=>!ship||p.ship===ship);
   if(!chunks.length)return alert('Nothing to export.');
   const blob=new Blob([JSON.stringify({v:1,chunks,pages})],{type:'application/json'});
@@ -238,7 +270,7 @@ async function importPack(file){
   const j=JSON.parse(await file.text());if(!j.chunks)throw new Error('Not a pack file');
   const keys=new Set(j.chunks.map(c=>c.ship+'|'+c.doc));
   for(const k of keys){const [s,d]=k.split('|');await removeDoc(s,d)}
-  await putMany('chunks',j.chunks.map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,emb:c.emb?unb64(c.emb):null})));
+  await putMany('chunks',j.chunks.map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,tags:c.tags||tagsFor(c.text,c.doc),emb:c.emb?unb64(c.emb):null})));
   if(j.pages?.length)await putMany('pages',j.pages);
 }
 
@@ -282,8 +314,9 @@ function refreshShips(){
   const ships=[...new Set(CH.map(c=>c.ship))].sort();const cur=$('#ship').value;
   $('#ship').innerHTML='<option value="">All ships</option>'+ships.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
   $('#shiplist').innerHTML=ships.map(s=>`<option value="${esc(s)}">`).join('');
-  const m=new Map();for(const c of CH){const k=c.ship+'|'+c.doc;m.set(k,(m.get(k)||0)+1)}
-  $('#docs').innerHTML=m.size?[...m].map(([k,n])=>{const [s,d]=k.split('|');return `<div class="doc"><span><b>${esc(s)}</b> · ${esc(d)}<br><small>${n} passages</small></span><button class="btn g" data-del="${esc(k)}">Remove</button></div>`}).join(''):'Empty';
+  if(!$('#sys').options.length)$('#sys').innerHTML='<option value="">All systems</option>'+[...Object.keys(SYSTEMS),'General'].map(s=>`<option>${esc(s)}</option>`).join('');
+  const m=new Map();for(const c of CH){const k=c.ship+'|'+c.doc;const e=m.get(k)||{n:0,t:{}};e.n++;for(const t of c.tags)e.t[t]=(e.t[t]||0)+1;m.set(k,e)}
+  $('#docs').innerHTML=m.size?[...m].map(([k,e])=>{const [s,d]=k.split('|');const tg=Object.entries(e.t).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([t,n])=>`${esc(t)} ${n}`).join(' · ');return `<div class="doc"><span><b>${esc(s)}</b> · ${esc(d)}<br><small>${e.n} passages · ${tg}</small></span><button class="btn g" data-del="${esc(k)}">Remove</button></div>`}).join(''):'Empty';
 }
 function fmt(t){
   let think='';
@@ -304,7 +337,7 @@ function addSrc(el){
 async function showSrc(el,n){
   const h=el._src[n-1];if(!h)return;
   const pg=await rq(st('pages').get(`${h.ship}|${h.doc}|${h.page}`));
-  modal(`<b>S${n}</b> · ${esc(h.ship)} · ${esc(h.doc)} · page ${h.page}<p>${esc(h.text)}</p>${pg?`<img src="${pg.img}" alt="page ${h.page}">`:'<small>No page image stored (text page).</small>'}`);
+  modal(`<b>S${n}</b> · ${esc(h.ship)} · ${esc(h.doc)} · page ${h.page}<br><small>${esc((h.tags||[]).join(' · '))}</small><p>${esc(h.text)}</p>${pg?`<img src="${pg.img}" alt="page ${h.page}">`:'<small>No page image stored (text page).</small>'}`);
 }
 function addActions(el,q,ship){
   const a=el.querySelector('.a');a.innerHTML='<button data-a="say">🔊 Read aloud</button><button data-a="card">📋 Job card</button><button data-a="log">💾 Log repair</button>';
