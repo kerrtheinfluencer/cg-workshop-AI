@@ -307,7 +307,7 @@ async function loadLLM(onProg){
     if(id.startsWith('cpu:')){
       if(!WLL){const m=await import(WLLAMA+'index.js');WLL=new m.Wllama({'single-thread/wllama.wasm':WLLAMA+'single-thread/wllama.wasm','multi-thread/wllama.wasm':WLLAMA+'multi-thread/wllama.wasm'})}
       const [repo,file]=CPUM[id];
-      await WLL.loadModelFromHF(repo,file,{n_ctx:4096,progressCallback:({loaded,total})=>onProg&&onProg({progress:total?loaded/total:0})});
+      await WLL.loadModelFromHF(repo,file,{n_ctx:2048,progressCallback:({loaded,total})=>onProg&&onProg({progress:total?loaded/total:0})});
       BACKEND='cpu';
     }else{
       if(ENG){try{await ENG.unload()}catch{}ENG=null}
@@ -491,6 +491,7 @@ async function ensureLLM(el){
     AIERR=String(e.message||e);return false;
   }
 }
+const SYS_CPU=`You are a marine workshop repair assistant. Use ONLY the SOURCES. Reply briefly with: Likely cause, Safety, Steps (numbered). Put the source tag like [S1] after each step. Copy numbers and part codes exactly as written in the sources. If the sources do not answer the question, say so.`;
 function hl(text,q){const ws=[...new Set(tok(q).filter(w=>w.length>2))].map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));if(!ws.length)return esc(text);const re=new RegExp('('+ws.join('|')+')','gi');return text.split(re).map((p,i)=>i%2?'<mark>'+esc(p)+'</mark>':esc(p)).join('')}
 function snip(text,q,len=380){const low=text.toLowerCase();let i=0;for(const w of tok(q).filter(w=>w.length>2)){const k=low.indexOf(w);if(k>=0){i=k;break}}const st=Math.max(0,i-80);return (st?'…':'')+text.slice(st,st+len)+(st+len<text.length?'…':'')}
 async function ask(q){
@@ -504,18 +505,29 @@ async function ask(q){
   let queries=[q];
   if(llm&&BACKEND!=='cpu'){try{setEl(el,'<i>Planning search…</i>');queries=[q,...await rewrite(q,ship)]}catch{}}
   setEl(el,'<i>Searching manuals…</i>');
-  const hits=await search(queries,ship,BACKEND==='cpu'?4:5);
+  const hits=await search(queries,ship,BACKEND==='cpu'?3:5);
   if(!hits.length){setEl(el,'Nothing in the loaded manuals matches. Try different words, or check the selected ship.');return}
   el._src=hits;
+  const cards=hits.map((h,i)=>`<div class="res" data-s="${i+1}"><b>S${i+1}</b> · ${esc(h.ship)} · ${esc(h.doc)} · p.${h.page}<br><small>${esc((h.tags||[]).join(' · '))}</small><br>${hl(snip(h.text,q),q)}</div>`).join('');
   if(!llm){
     const why=AIERR?`<div class="warn">AI could not start: ${esc(AIERR)}</div>`:'<small>The AI is switched off. Pick a model in Library for step-by-step repair answers.</small>';
-    setEl(el,`<b>Best matches in your manuals</b> <small>(tap a card for the full text and page)</small>${why}`+hits.map((h,i)=>`<div class="res" data-s="${i+1}"><b>S${i+1}</b> · ${esc(h.ship)} · ${esc(h.doc)} · p.${h.page}<br><small>${esc((h.tags||[]).join(' · '))}</small><br>${hl(snip(h.text,q),q)}</div>`).join(''));
+    setEl(el,`<b>Best matches in your manuals</b> <small>(tap a card for the full text and page)</small>${why}${cards}`);
     addSrc(el);return
   }
-  const ctx=hits.map((h,i)=>`[S${i+1}] (${h.ship} · ${h.doc} · p.${h.page})\n${h.text}`).join('\n\n');
-  const msgs=[{role:'system',content:SYS},...history.slice(-4),{role:'user',content:`SOURCES:\n${ctx}\n\nQUESTION: ${q}`}];
-  setEl(el,'<i>Thinking…</i>');
-  const out=await gen(msgs,{max:800,onToken:t=>{setEl(el,fmt(t));scroll()}});
+  const cpu=BACKEND==='cpu';
+  el.querySelector('.t').innerHTML=`<b>Best matches in your manuals</b> <small>(tap a card for the full text and page)</small>${cards}`;
+  const ctx=hits.map((h,i)=>`[S${i+1}] (${h.ship} · ${h.doc} · p.${h.page})\n${h.text.slice(0,cpu?550:900)}`).join('\n\n');
+  const msgs=[{role:'system',content:cpu?SYS_CPU:SYS},...history.slice(-(cpu?2:4)),{role:'user',content:`SOURCES:\n${ctx}\n\nQUESTION: ${q}`}];
+  const t0=Date.now();let first=true;
+  const tick=()=>setEl(el,`<i>✍️ AI is reading the passages and writing the answer… ${Math.round((Date.now()-t0)/1000)}s<br><small>${cpu?'CPU mode is slow (1–3 minutes). ':''}The matching passages are already shown above, so you can start reading them now.</small></i>`);
+  tick();const timer=setInterval(tick,1000);
+  let out;
+  try{
+    out=await gen(msgs,{max:cpu?350:800,onToken:t=>{
+      if(first){first=false;clearInterval(timer);el.querySelector('.t').innerHTML=`<details><summary>Matching manual passages (tap to open)</summary>${cards}</details>`}
+      setEl(el,fmt(t));scroll()}});
+  }catch(e){clearInterval(timer);setEl(el,'<div class="warn">⚠️ The AI stopped: '+esc(e.message||e)+'<br>The matching passages above are still valid.</div>');return}
+  clearInterval(timer);
   history.push({role:'user',content:q},{role:'assistant',content:stripThink(out).slice(0,600)});
   finish(el,out,hits,q,ship);
 }
