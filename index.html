@@ -83,7 +83,7 @@ progress{width:100%}
     <select id="model"></select>
     <label class="ck"><input type="checkbox" id="deep" checked> <span><b>Deep mode</b>: diagnose, search several times, read pages, ask you questions, and double-check every figure (slower, much more reliable)</span></label>
     <div class="row"><button class="btn g" id="wake">Download / wake AI now</button></div>
-    <small>First download needs Wi-Fi. After that it works with no internet.</small>
+    <small>First download needs Wi-Fi: keep the screen on and this page open (it keeps the screen awake for you). Finished parts are saved, so if it stops, tap the button again to resume. After that it works with no internet.</small>
   </div>
   <div class="box">
     <h3>Add manuals</h3>
@@ -276,18 +276,22 @@ async function importPack(file){
 
 /* ---------- LLM (WebLLM, on-device) ---------- */
 const MODELS=[
+ ['none','Search only · no AI download (works now, any phone)'],
+ ['SmolLM2-360M-Instruct-q4f16_1-MLC','Lightest AI · smallest download (≈0.3 GB)'],
  ['Llama-3.2-1B-Instruct-q4f16_1-MLC','Fast · most phones (≈0.7 GB)'],
  ['Qwen3-1.7B-q4f16_1-MLC','Reasoning · newer phones (≈1.2 GB)'],
- ['Phi-3.5-mini-instruct-q4f16_1-MLC','Smartest · 6 GB+ RAM phones (≈2.3 GB)'],
- ['SmolLM2-360M-Instruct-q4f16_1-MLC','Lightest · older phones']];
+ ['Phi-3.5-mini-instruct-q4f16_1-MLC','Smartest · 6 GB+ RAM phones (≈2.3 GB)']];
 let ENG=null,ENGID=null,WL=null,busy=false,history=[];
 const isQwen=()=>(ENGID||'').includes('Qwen3');
 async function loadLLM(onProg){
   if(!navigator.gpu)throw new Error('This phone/browser has no WebGPU, so the on-device AI cannot run. Search-only mode is used.');
-  const id=$('#model').value;if(ENG&&ENGID===id)return;
+  const id=$('#model').value;if(id==='none')throw new Error('"Search only" is selected. Pick an AI model above first.');
+  if(ENG&&ENGID===id)return;
   if(ENG){try{await ENG.unload()}catch{}ENG=null}
   WL=WL||await import(WEBLLM);
-  ENG=await WL.CreateMLCEngine(id,{initProgressCallback:p=>onProg&&onProg(p)});ENGID=id;status();
+  let lock=null;try{lock=await navigator.wakeLock?.request('screen')}catch{}
+  try{ENG=await WL.CreateMLCEngine(id,{initProgressCallback:p=>onProg&&onProg(p)})}finally{try{await lock?.release()}catch{}}
+  ENGID=id;status();
 }
 async function gen(messages,{max=700,temp=.3,onToken}={}){
   let out='';const s=await ENG.chat.completions.create({messages,stream:true,temperature:temp,max_tokens:isQwen()?Math.max(max,1400):max});
@@ -309,7 +313,7 @@ Format:
 Put the source tag like [S2] after every step or fact. Copy part numbers, torque values and clearances exactly as written in the sources; never invent them. If the sources do not cover the question, say so plainly and say what to inspect or who to ask. Keep it short and practical for a technician in a workshop.`;
 
 /* ---------- UI helpers ---------- */
-function status(){$('#stat').textContent=`AI: ${ENG?'ready ('+ENGID.split('-q4')[0]+')':(navigator.gpu?'not loaded':'search-only (no WebGPU)')} · Library: ${CH.length} passages · ${navigator.onLine?'online':'offline'}`}
+function status(){$('#stat').textContent=`AI: ${ENG?'ready ('+ENGID.split('-q4')[0]+')':(navigator.gpu&&$('#model')?.value!=='none'?'not loaded':'search-only')} · Library: ${CH.length} passages · ${navigator.onLine?'online':'offline'}`}
 function refreshShips(){
   const ships=[...new Set(CH.map(c=>c.ship))].sort();const cur=$('#ship').value;
   $('#ship').innerHTML='<option value="">All ships</option>'+ships.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
@@ -443,6 +447,7 @@ async function deepAsk(q,ship,el){
 
 /* ---------- ask (agent pipeline) ---------- */
 async function ensureLLM(el){
+  if($('#model').value==='none')return false;
   if(ENG&&ENGID===$('#model').value)return true;
   if(!navigator.gpu)return false;
   try{await loadLLM(p=>setEl(el,`<i>Loading AI model… ${Math.round((p.progress||0)*100)}%<br><small>One-time download. Keep this page open.</small></i>`));return true}
