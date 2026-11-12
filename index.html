@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1f33">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CG Workshop AI">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>CG Workshop AI</title>
+<style>
+:root{--bg:#0b1f33;--card:#12304d;--card2:#183b5e;--ink:#eaf2fb;--dim:#9bb3cc;--acc:#f2b632;--ok:#3ecf8e;--bad:#ff6b6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{display:flex;flex-direction:column;height:100dvh;padding-top:env(safe-area-inset-top)}
+header{display:flex;gap:8px;align-items:center;padding:10px 12px;background:#08172a;border-bottom:1px solid #1d4065}
+.brand{font-weight:700;flex:1;white-space:nowrap}
+select,input[type=text],textarea{background:var(--card);color:var(--ink);border:1px solid #2a5580;border-radius:10px;padding:9px;font:inherit;max-width:100%}
+header select{max-width:46%}
+#stat{font-size:12px;color:var(--dim);padding:4px 12px;background:#08172a}
+nav{display:flex;background:#08172a}
+nav button{flex:1;padding:10px;background:none;border:0;border-bottom:3px solid transparent;color:var(--dim);font:inherit;font-weight:600}
+nav button.on{color:var(--acc);border-color:var(--acc)}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.tab{flex:1;min-height:0;display:flex;flex-direction:column}
+.tab[hidden]{display:none}
+.pad{padding:12px;overflow:auto}
+#msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:94%;padding:10px 12px;border-radius:14px;word-wrap:break-word;overflow-wrap:anywhere}
+.msg.user{align-self:flex-end;background:#245a8d}
+.msg.bot{align-self:flex-start;background:var(--card)}
+.s,.a{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.t details{margin:0 0 8px}.t div{font-size:12px;color:var(--dim);padding:2px 0}
+.warn{margin-top:8px;padding:8px;border-radius:8px;background:#5a2a2a;font-size:14px}
+.ok{margin-top:8px;font-size:13px;color:var(--ok)}
+.chip,.a button{font-size:12px;background:var(--card2);color:var(--ink);border:1px solid #2f6396;border-radius:999px;padding:5px 10px}
+a.cite{color:var(--acc);font-weight:700;cursor:pointer;text-decoration:underline}
+details{margin-bottom:6px;color:var(--dim);font-size:13px}.think{padding:6px 0}
+#bar{display:flex;gap:6px;padding:8px;background:#08172a;padding-bottom:calc(8px + env(safe-area-inset-bottom));align-items:flex-end}
+#bar textarea{flex:1;resize:none;max-height:120px}
+.ib{width:44px;height:44px;border-radius:12px;border:0;background:var(--card2);color:var(--ink);font-size:20px}
+#send{background:var(--acc);color:#222}
+.ib.rec{background:var(--bad)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:center}
+.btn{background:var(--acc);color:#222;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:700}
+.btn.g{background:var(--card2);color:var(--ink)}.btn.r{background:var(--bad);color:#fff}
+.box{background:var(--card);border-radius:12px;padding:12px;margin-bottom:12px}
+h3{margin:0 0 8px}small,.dim{color:var(--dim)}
+.doc{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1d4065;font-size:14px}
+#modal{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-end;justify-content:center;z-index:9}
+#modal[hidden]{display:none}
+.card{background:var(--card);width:100%;max-width:640px;max-height:88dvh;overflow:auto;border-radius:16px 16px 0 0;padding:14px;position:relative}
+.card img{max-width:100%;border-radius:8px;margin-top:8px;background:#fff}
+#mx{position:absolute;right:10px;top:8px;background:none;border:0;color:var(--ink);font-size:22px}
+label.ck{display:flex;gap:8px;padding:6px 0;align-items:flex-start}
+progress{width:100%}
+@media print{body>*:not(#modal){display:none!important}#modal{position:static;background:none}.card{max-height:none;color:#000;background:#fff}#mx,.row{display:none}}
+</style>
+</head>
+<body>
+<header><div class="brand">⚓ CG Workshop AI</div><select id="ship" aria-label="Ship"></select></header>
+<div id="stat">Starting…</div>
+<nav><button data-t="chat" class="on">Chat</button><button data-t="lib">Library</button><button data-t="logs">Logs</button></nav>
+<main>
+<section id="chat" class="tab">
+  <div id="msgs"></div>
+  <div id="bar">
+    <button class="ib" id="cam" title="Photo">📷</button>
+    <button class="ib" id="mic" title="Voice">🎤</button>
+    <textarea id="in" rows="1" placeholder="Describe the fault or ask a repair question…"></textarea>
+    <button class="ib" id="send">➤</button>
+  </div>
+  <input type="file" id="camin" accept="image/*" capture="environment" hidden>
+</section>
+
+<section id="lib" class="tab pad" hidden>
+  <div class="box">
+    <h3>AI model</h3>
+    <select id="model"></select>
+    <label class="ck"><input type="checkbox" id="deep" checked> <span><b>Deep mode</b>: diagnose, search several times, read pages, ask you questions, and double-check every figure (slower, much more reliable)</span></label>
+    <div class="row"><button class="btn g" id="wake">Download / wake AI now</button></div>
+    <small>First download needs Wi-Fi. After that it works with no internet.</small>
+  </div>
+  <div class="box">
+    <h3>Add manuals</h3>
+    <div class="row"><input type="text" id="newship" list="shiplist" placeholder="Ship name (e.g. CG 101)"><datalist id="shiplist"></datalist></div>
+    <input type="file" id="files" multiple accept=".pdf,.docx,.txt,.md">
+    <label class="ck"><input type="checkbox" id="ocr"> <span>OCR scanned pages (slow, use for scans)</span></label>
+    <div class="row"><button class="btn" id="add">Add to library</button></div>
+    <progress id="prog" value="0" max="100" hidden></progress>
+    <div id="plog" class="dim"></div>
+    <small>Best done on the laptop. Then export a pack and share it to the phones.</small>
+  </div>
+  <div class="box">
+    <h3>Share a library pack</h3>
+    <div class="row"><button class="btn g" id="exp">Export pack (selected ship)</button><button class="btn g" id="impb">Import pack</button></div>
+    <input type="file" id="imp" accept=".json,.cgpack" hidden>
+  </div>
+  <div class="box"><h3>Library</h3><div id="docs" class="dim">Empty</div>
+    <div class="row"><button class="btn r" id="wipe">Delete everything</button></div></div>
+</section>
+
+<section id="logs" class="tab pad" hidden>
+  <div class="row"><button class="btn g" id="lexp">Export logs</button></div>
+  <div id="loglist" class="dim">No repairs logged yet.</div>
+</section>
+</main>
+<div id="modal" hidden><div class="card"><button id="mx">✕</button><div id="mb"></div></div></div>
+
+<script type="module">
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v===null?d:JSON.parse(v)}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+const TFJS='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+const WEBLLM='https://esm.run/@mlc-ai/web-llm';
+
+/* ---------- storage ---------- */
+let db;
+function openDB(){return new Promise((res,rej)=>{const r=indexedDB.open('cgbot',1);
+  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('chunks',{keyPath:'id',autoIncrement:true});d.createObjectStore('pages',{keyPath:'key'});d.createObjectStore('logs',{keyPath:'id',autoIncrement:true})};
+  r.onsuccess=()=>{db=r.result;res()};r.onerror=()=>rej(r.error)})}
+const rq=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+const st=(n,m='readonly')=>db.transaction(n,m).objectStore(n);
+const getAll=n=>rq(st(n).getAll());
+const put=(n,v)=>rq(st(n,'readwrite').put(v));
+const del=(n,k)=>rq(st(n,'readwrite').delete(k));
+const clearStore=n=>rq(st(n,'readwrite').clear());
+const putMany=(n,arr)=>new Promise((res,rej)=>{const t=db.transaction(n,'readwrite');const s=t.objectStore(n);arr.forEach(v=>s.put(v));t.oncomplete=()=>res();t.onerror=()=>rej(t.error)});
+
+/* ---------- index + search ---------- */
+let CH=[],DF=new Map(),AVG=1;
+const tok=s=>(s.toLowerCase().match(/[a-z0-9][a-z0-9\-\/\.]*[a-z0-9]|[a-z0-9]/g)||[]);
+function prep(c){const t=tok(c.text);c.len=t.length;c.tf=new Map();for(const w of t)c.tf.set(w,(c.tf.get(w)||0)+1)}
+async function loadIndex(){
+  const rows=await getAll('chunks');
+  CH=rows.map(r=>({...r,emb:r.emb?Float32Array.from(r.emb,v=>v/127):null}));
+  CH.forEach(prep);DF=new Map();let tot=0;
+  for(const c of CH){tot+=c.len;for(const t of c.tf.keys())DF.set(t,(DF.get(t)||0)+1)}
+  AVG=(tot/Math.max(CH.length,1))||1;refreshShips();status();
+}
+function bm25(q,c){let s=0;const N=CH.length;for(const t of q){const f=c.tf.get(t);if(!f)continue;const df=DF.get(t)||0;s+=Math.log(1+(N-df+.5)/(df+.5))*f*2.4/(f+1.4*(.25+.75*c.len/AVG))}return s}
+async function search(queries,ship,k=5){
+  const pool=CH.filter(c=>!ship||c.ship===ship);const score=new Map();
+  for(const q of queries){
+    const qt=tok(q);let qe=null;
+    if(pool.some(c=>c.emb))qe=await embedOne(q).catch(()=>null);
+    const b=pool.map(c=>bm25(qt,c));const mx=b.reduce((a,x)=>Math.max(a,x),1e-9);
+    pool.forEach((c,i)=>{let s=b[i]/mx;
+      if(qe&&c.emb){let d=0;for(let j=0;j<qe.length;j++)d+=qe[j]*c.emb[j];s=.4*s+.6*Math.max(d,0)}
+      if(s>(score.get(c)||0))score.set(c,s)});
+  }
+  return [...score].sort((a,b)=>b[1]-a[1]).slice(0,k).filter(x=>x[1]>.08).map(x=>x[0]);
+}
+
+/* ---------- embeddings + speech (transformers.js, lazy) ---------- */
+let EXT=null,EMBFAIL=false,ASR=null,TF=null;
+async function tf(){if(!TF){TF=await import(TFJS);TF.env.allowLocalModels=false}return TF}
+async function embedMany(texts){
+  if(EMBFAIL)throw new Error('no embedder');
+  try{if(!EXT){const t=await tf();EXT=await t.pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2')}
+    const o=await EXT(texts,{pooling:'mean',normalize:true});return o.tolist()}
+  catch(e){EMBFAIL=true;throw e}
+}
+const embedOne=async t=>(await embedMany([t]))[0];
+async function getASR(){if(!ASR){const t=await tf();ASR=await t.pipeline('automatic-speech-recognition','Xenova/whisper-tiny.en')}return ASR}
+
+/* ---------- ingest ---------- */
+const loadScript=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)});
+async function loadPdfjs(){
+  if(window.__pdfjs)return window.__pdfjs;
+  const base='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/';
+  const m=await import(base+'pdf.min.mjs');
+  m.GlobalWorkerOptions.workerSrc=URL.createObjectURL(new Blob([`import "${base}pdf.worker.min.mjs";`],{type:'text/javascript'}));
+  return window.__pdfjs=m;
+}
+async function ocr(src,logger){
+  if(!window.Tesseract)await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  const r=await Tesseract.recognize(src,'eng',logger?{logger}:undefined);return r.data.text;
+}
+function chunkText(t,size=900,ov=150){t=t.replace(/\s+/g,' ').trim();const out=[];if(!t)return out;for(let i=0;i<t.length;i+=size-ov){out.push(t.slice(i,i+size));if(i+size>=t.length)break}return out}
+async function removeDoc(ship,doc){
+  const rows=await getAll('chunks');for(const r of rows)if(r.ship===ship&&r.doc===doc)await del('chunks',r.id);
+  const pg=await getAll('pages');for(const p of pg)if(p.ship===ship&&p.doc===doc)await del('pages',p.key);
+}
+async function ingest(file,ship,doOcr,prog){
+  const doc=file.name;const ext=doc.split('.').pop().toLowerCase();await removeDoc(ship,doc);
+  const pages=[],imgs=[];
+  if(ext==='pdf'){
+    const pdfjs=await loadPdfjs();
+    const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    for(let p=1;p<=pdf.numPages;p++){
+      prog(`${doc}: reading page ${p}/${pdf.numPages}`,p/pdf.numPages*50);
+      const pg=await pdf.getPage(p);const tc=await pg.getTextContent();
+      let text=tc.items.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+      if(text.length<400){
+        const v0=pg.getViewport({scale:1});const needOcr=doOcr&&text.length<40;
+        const vp=pg.getViewport({scale:(needOcr?1600:1000)/v0.width});
+        const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+        await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+        if(needOcr){prog(`${doc}: OCR page ${p}/${pdf.numPages}`,p/pdf.numPages*50);text=(await ocr(cv)).replace(/\s+/g,' ').trim()}
+        imgs.push({key:`${ship}|${doc}|${p}`,ship,doc,page:p,img:cv.toDataURL('image/jpeg',.55)});
+        cv.width=cv.height=0;
+      }
+      pages.push({page:p,text});pg.cleanup();
+    }
+  }else if(ext==='docx'){
+    if(!window.mammoth)await loadScript('https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js');
+    const t=(await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value;
+    for(let i=0,p=1;i<t.length;i+=3000,p++)pages.push({page:p,text:t.slice(i,i+3000)});
+  }else{
+    const t=await file.text();for(let i=0,p=1;i<t.length;i+=3000,p++)pages.push({page:p,text:t.slice(i,i+3000)});
+  }
+  const rows=[];for(const pg of pages)for(const tx of chunkText(pg.text))rows.push({ship,doc,page:pg.page,text:tx});
+  let embOk=true;
+  for(let i=0;i<rows.length&&embOk;i+=16){
+    prog(`${doc}: indexing ${Math.min(i+16,rows.length)}/${rows.length}`,50+i/rows.length*50);
+    try{const e=await embedMany(rows.slice(i,i+16).map(r=>r.text));e.forEach((v,j)=>rows[i+j].emb=Int8Array.from(v,x=>Math.round(x*127)))}
+    catch{embOk=false;rows.forEach(r=>delete r.emb)}
+  }
+  await putMany('chunks',rows);if(imgs.length)await putMany('pages',imgs);
+  return {chunks:rows.length,imgs:imgs.length,embOk};
+}
+
+/* ---------- pack export / import ---------- */
+const b64=u=>{let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)};
+const unb64=s=>{const b=atob(s);const u=new Int8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i)<<24>>24;return u};
+async function exportPack(){
+  const ship=$('#ship').value;
+  const chunks=(await getAll('chunks')).filter(c=>!ship||c.ship===ship).map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,emb:c.emb?b64(new Uint8Array(c.emb.buffer,c.emb.byteOffset,c.emb.length)):null}));
+  const pages=(await getAll('pages')).filter(p=>!ship||p.ship===ship);
+  if(!chunks.length)return alert('Nothing to export.');
+  const blob=new Blob([JSON.stringify({v:1,chunks,pages})],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`cg-pack-${(ship||'all-ships').replace(/\W+/g,'_')}.cgpack`;a.click();
+}
+async function importPack(file){
+  const j=JSON.parse(await file.text());if(!j.chunks)throw new Error('Not a pack file');
+  const keys=new Set(j.chunks.map(c=>c.ship+'|'+c.doc));
+  for(const k of keys){const [s,d]=k.split('|');await removeDoc(s,d)}
+  await putMany('chunks',j.chunks.map(c=>({ship:c.ship,doc:c.doc,page:c.page,text:c.text,emb:c.emb?unb64(c.emb):null})));
+  if(j.pages?.length)await putMany('pages',j.pages);
+}
+
+/* ---------- LLM (WebLLM, on-device) ---------- */
+const MODELS=[
+ ['Llama-3.2-1B-Instruct-q4f16_1-MLC','Fast · most phones (≈0.7 GB)'],
+ ['Qwen3-1.7B-q4f16_1-MLC','Reasoning · newer phones (≈1.2 GB)'],
+ ['Phi-3.5-mini-instruct-q4f16_1-MLC','Smartest · 6 GB+ RAM phones (≈2.3 GB)'],
+ ['SmolLM2-360M-Instruct-q4f16_1-MLC','Lightest · older phones']];
+let ENG=null,ENGID=null,WL=null,busy=false,history=[];
+const isQwen=()=>(ENGID||'').includes('Qwen3');
+async function loadLLM(onProg){
+  if(!navigator.gpu)throw new Error('This phone/browser has no WebGPU, so the on-device AI cannot run. Search-only mode is used.');
+  const id=$('#model').value;if(ENG&&ENGID===id)return;
+  if(ENG){try{await ENG.unload()}catch{}ENG=null}
+  WL=WL||await import(WEBLLM);
+  ENG=await WL.CreateMLCEngine(id,{initProgressCallback:p=>onProg&&onProg(p)});ENGID=id;status();
+}
+async function gen(messages,{max=700,temp=.3,onToken}={}){
+  let out='';const s=await ENG.chat.completions.create({messages,stream:true,temperature:temp,max_tokens:isQwen()?Math.max(max,1400):max});
+  for await(const c of s){const d=c.choices[0]?.delta?.content||'';if(d){out+=d;onToken&&onToken(out)}}return out;
+}
+const stripThink=t=>t.replace(/<think>[\s\S]*?(<\/think>|$)/g,'').trim();
+async function rewrite(q,ship){
+  const m=[{role:'system',content:'You turn a marine workshop question into search queries for a ship manual. Output 2 short keyword queries (component, system, symptom, part number), one per line, no numbering, nothing else.'+(isQwen()?' /no_think':'')},{role:'user',content:(ship?'Ship: '+ship+'\n':'')+q}];
+  const o=stripThink(await gen(m,{max:60,temp:0}));
+  return o.split('\n').map(s=>s.replace(/^[-*\d.\s]+/,'').trim()).filter(s=>s.length>2).slice(0,2);
+}
+const SYS=`You are the repair assistant for the Jamaica Defence Force Coast Guard marine workshop. Answer ONLY from the SOURCES provided. Reason step by step about the fault before answering.
+Format:
+**Likely cause**
+**Safety** (isolate power, fuel, pressure, lockout; only what applies)
+**Tools / parts**
+**Steps** (numbered)
+**Check** (how to confirm the fix)
+Put the source tag like [S2] after every step or fact. Copy part numbers, torque values and clearances exactly as written in the sources; never invent them. If the sources do not cover the question, say so plainly and say what to inspect or who to ask. Keep it short and practical for a technician in a workshop.`;
+
+/* ---------- UI helpers ---------- */
+function status(){$('#stat').textContent=`AI: ${ENG?'ready ('+ENGID.split('-q4')[0]+')':(navigator.gpu?'not loaded':'search-only (no WebGPU)')} · Library: ${CH.length} passages · ${navigator.onLine?'online':'offline'}`}
+function refreshShips(){
+  const ships=[...new Set(CH.map(c=>c.ship))].sort();const cur=$('#ship').value;
+  $('#ship').innerHTML='<option value="">All ships</option>'+ships.map(s=>`<option ${s===cur?'selected':''}>${esc(s)}</option>`).join('');
+  $('#shiplist').innerHTML=ships.map(s=>`<option value="${esc(s)}">`).join('');
+  const m=new Map();for(const c of CH){const k=c.ship+'|'+c.doc;m.set(k,(m.get(k)||0)+1)}
+  $('#docs').innerHTML=m.size?[...m].map(([k,n])=>{const [s,d]=k.split('|');return `<div class="doc"><span><b>${esc(s)}</b> · ${esc(d)}<br><small>${n} passages</small></span><button class="btn g" data-del="${esc(k)}">Remove</button></div>`}).join(''):'Empty';
+}
+function fmt(t){
+  let think='';
+  t=t.replace(/<think>([\s\S]*?)(<\/think>|$)/,(m,a)=>{think=a.trim();return ''});
+  const h=esc(t.trim()).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\[S(\d+)\]/g,'<a class="cite" data-s="$1">S$1</a>').replace(/\n/g,'<br>');
+  return (think?`<details><summary>Reasoning</summary><div class="think">${esc(think).replace(/\n/g,'<br>')}</div></details>`:'')+h;
+}
+function addMsg(role,html){
+  const el=document.createElement('div');el.className='msg '+role;el.innerHTML='<div class="t"></div><div class="b"></div><div class="s"></div><div class="a"></div>';
+  el.querySelector('.b').innerHTML=html;$('#msgs').appendChild(el);scroll();return el;
+}
+const setEl=(el,h)=>{el.querySelector('.b').innerHTML=h};
+const scroll=()=>{const m=$('#msgs');m.scrollTop=m.scrollHeight};
+function modal(html){$('#mb').innerHTML=html;$('#modal').hidden=false}
+function addSrc(el){
+  el.querySelector('.s').innerHTML=el._src.map((h,i)=>`<span class="chip" data-s="${i+1}">S${i+1} · ${esc(h.ship)} · ${esc(h.doc.slice(0,22))} p.${h.page}</span>`).join('');
+}
+async function showSrc(el,n){
+  const h=el._src[n-1];if(!h)return;
+  const pg=await rq(st('pages').get(`${h.ship}|${h.doc}|${h.page}`));
+  modal(`<b>S${n}</b> · ${esc(h.ship)} · ${esc(h.doc)} · page ${h.page}<p>${esc(h.text)}</p>${pg?`<img src="${pg.img}" alt="page ${h.page}">`:'<small>No page image stored (text page).</small>'}`);
+}
+function addActions(el,q,ship){
+  const a=el.querySelector('.a');a.innerHTML='<button data-a="say">🔊 Read aloud</button><button data-a="card">📋 Job card</button><button data-a="log">💾 Log repair</button>';
+  el._q=q;el._ship=ship;
+}
+function jobCard(el){
+  const txt=stripThink(el._text||'');
+  const steps=txt.split('\n').filter(l=>/^\s*\d+[.)]\s+/.test(l)).map(l=>l.replace(/^\s*\d+[.)]\s+/,'').replace(/\[S\d+\]/g,'').trim());
+  const head=`JOB CARD — ${el._ship||'All ships'} — ${new Date().toLocaleDateString()}\nIssue: ${el._q}`;
+  modal(`<b>Job card</b><p>${esc(head).replace(/\n/g,'<br>')}</p>${steps.length?steps.map(s=>`<label class="ck"><input type="checkbox"><span>${esc(s)}</span></label>`).join(''):'<p class="dim">No numbered steps found in this answer.</p>'}
+  <div class="row"><button class="btn" id="jshare">Share</button><button class="btn g" onclick="print()">Print</button></div>`);
+  $('#jshare').onclick=()=>{const t=head+'\n\n'+steps.map((s,i)=>`[ ] ${i+1}. ${s}`).join('\n');navigator.share?navigator.share({title:'Job card',text:t}).catch(()=>{}):navigator.clipboard.writeText(t)};
+}
+async function logRepair(el){
+  await put('logs',{ts:Date.now(),ship:el._ship||'',q:el._q,a:stripThink(el._text||'')});renderLogs();alert('Saved to Logs.');
+}
+async function renderLogs(){
+  const L=(await getAll('logs')).reverse();
+  $('#loglist').innerHTML=L.length?L.map(l=>`<div class="box"><b>${esc(l.ship||'All ships')}</b> · <small>${new Date(l.ts).toLocaleString()}</small><br>${esc(l.q)}<details><summary>Answer</summary>${esc(l.a).replace(/\n/g,'<br>')}</details><button class="btn r" data-ld="${l.id}">Delete</button></div>`).join(''):'No repairs logged yet.';
+}
+
+/* ---------- unit calculator tool ---------- */
+const UN={nm:['tq',1],lbfft:['tq',1.3558179483],lbfin:['tq',.1129848],kpa:['p',1],psi:['p',6.894757],bar:['p',100],mpa:['p',1000],mm:['l',1],cm:['l',10],in:['l',25.4],ft:['l',304.8],m:['l',1000],l:['v',1],gal:['v',3.785411784],qt:['v',.946353],ml:['v',.001],kg:['m',1],lb:['m',.45359237],g:['m',.001],c:['t'],f:['t']};
+const AL={'n·m':'nm',newtonmetre:'nm',ftlb:'lbfft',ftlbs:'lbfft',lbft:'lbfft',footpound:'lbfft',inlb:'lbfin',lbin:'lbfin',inch:'in',inches:'in',litre:'l',liter:'l',litres:'l',liters:'l',gallon:'gal',gallons:'gal',lbs:'lb',pounds:'lb','°c':'c','°f':'f',celsius:'c',fahrenheit:'f'};
+const nu=s=>{s=s.toLowerCase().replace(/[\s\-\.]/g,'');return AL[s]||s};
+function convert(q){
+  const m=q.trim().match(/^(?:convert\s+)?(-?\d+(?:\.\d+)?)\s*([a-z°·\-\. ]{1,12}?)\s*(?:to|into|in|->|=)\s*([a-z°·\-\. ]{1,12})\??$/i);if(!m)return null;
+  const v=+m[1],a=nu(m[2]),b=nu(m[3]),A=UN[a],B=UN[b];if(!A||!B||A[0]!==B[0])return null;
+  let r;if(A[0]==='t')r=a==='c'&&b==='f'?v*9/5+32:a==='f'&&b==='c'?(v-32)*5/9:v;else r=v*A[1]/B[1];
+  return `${v} ${m[2].trim()} = ${+r.toPrecision(6)} ${m[3].trim()}  (calculated, not from the manuals — always confirm against the manual)`;
+}
+
+/* ---------- agent: diagnose -> tool loop -> answer -> verify ---------- */
+const NUMRE=/\d+(?:[.,]\d+)?\s?(?:n·?m|lbf?[-·\s]?ft|ft[-·\s]?lbs?|psi|bar|kpa|mpa|mm|rpm|°?c\b|°?f\b|volts?|v\b|amps?|ml|litres?|liters?|kg|hz)/gi;
+function verify(answer,srcs){
+  const hay=srcs.map(s=>s.text).join(' ').toLowerCase().replace(/\s+/g,'');const bad=new Set();
+  for(const m of answer.match(NUMRE)||[]){if(!hay.includes(m.toLowerCase().replace(/\s+/g,'')))bad.add(m.trim())}
+  const tags=[...answer.matchAll(/\[S(\d+)\]/g)].map(x=>+x[1]).filter(n=>n>srcs.length||n<1);
+  tags.forEach(n=>bad.add('citation [S'+n+']'));
+  return [...bad];
+}
+function finish(el,out,pool,q,ship){
+  el._src=pool;el._text=out;const clean=stripThink(out);const bad=verify(clean,pool);const nums=(clean.match(NUMRE)||[]).length;
+  let w='';
+  if(bad.length)w=`<div class="warn">⚠️ Not found in the cited manual text: <b>${bad.map(esc).join(', ')}</b>. Verify against the manual page before using.</div>`;
+  else if(nums)w='<div class="ok">✓ Every figure in this answer appears in the manual pages cited.</div>';
+  setEl(el,fmt(out)+w);addSrc(el);addActions(el,q,ship);scroll();
+}
+const AGENT_SYS=`You are the repair agent for the Jamaica Defence Force Coast Guard marine workshop. You work in steps. Each step, reply with EXACTLY ONE line in one of these forms:
+ACTION: search | <keywords>
+ACTION: page | <document name> | <page number>
+ACTION: calc | <e.g. 45 ft-lb to Nm>
+ACTION: ask | <one short clarifying question for the technician>
+ACTION: answer
+Method: use the hypotheses to decide what to look up. Search for the most likely cause and its repair procedure. If the result does not cover it, search again with different words (3 searches at most). Use page to read the pages around a useful result. Use ask only when the vessel, equipment or symptom is too vague to search. When you have enough, reply ACTION: answer.`;
+function toolSearch(q,ship,pool){
+  return search([q],ship,3).then(hits=>{const out=[];for(const h of hits){let i=pool.indexOf(h);if(i<0){if(pool.length>=6)continue;pool.push(h);i=pool.length-1}out.push(`[S${i+1}] ${h.doc} p.${h.page}: ${h.text.slice(0,280)}`)}return out.join('\n')||'No matches. Try different words.'});
+}
+function toolPage(doc,page,ship,pool){
+  const hs=CH.filter(c=>(!ship||c.ship===ship)&&c.page===+page&&c.doc.toLowerCase().includes((doc||'').toLowerCase()));
+  if(!hs.length)return 'That page is not in the library.';
+  const out=[];for(const h of hs.slice(0,2)){let i=pool.indexOf(h);if(i<0){if(pool.length>=6)continue;pool.push(h);i=pool.length-1}out.push(`[S${i+1}] ${h.doc} p.${h.page}: ${h.text.slice(0,500)}`)}
+  return out.join('\n')||'Source list is full.';
+}
+async function deepAsk(q,ship,el){
+  const pool=[],trace=[];
+  const upd=()=>{el.querySelector('.t').innerHTML=`<details><summary>Agent steps (${trace.length}) — tap to see how it worked</summary>${trace.map(t=>'<div>'+esc(t)+'</div>').join('')}</details>`};
+  const NT=isQwen()?' /no_think':'';
+  const earlier=history.slice(-4).map(m=>(m.role==='user'?'Technician: ':'Assistant: ')+m.content.slice(0,300)).join('\n');
+  const head=(earlier?'Earlier in this chat:\n'+earlier+'\n\n':'')+(ship?'Vessel: '+ship+'\n':'');
+  setEl(el,'<i>Diagnosing the fault…</i>');
+  const hyp=stripThink(await gen([{role:'system',content:'You are an experienced marine engineer. In at most 3 short lines, list the most likely causes of the fault, most likely first, each with the quick check that confirms it. No preamble.'+NT},{role:'user',content:head+'Fault/question: '+q}],{max:170,temp:.2}));
+  trace.push('Hypotheses: '+hyp.replace(/\n+/g,' | '));upd();
+  const msgs=[{role:'system',content:AGENT_SYS+NT},{role:'user',content:`${head}Fault/question: ${q}\nHypotheses:\n${hyp}`}];
+  let asked=null;
+  for(let step=0;step<5;step++){
+    setEl(el,`<i>Agent step ${step+1}…</i>`);
+    const raw=stripThink(await gen(msgs,{max:80,temp:0}));
+    const m=raw.match(/ACTION:\s*(\w+)\s*(?:\|\s*([\s\S]*))?/i);
+    const act=(m?m[1]:'answer').toLowerCase();const a=((m&&m[2])||'').split('\n')[0].split('|').map(s=>s.trim());
+    msgs.push({role:'assistant',content:raw.split('\n')[0]});
+    let obs;
+    if(act==='search'){trace.push('Search: '+(a[0]||q));upd();obs=await toolSearch(a[0]||q,ship,pool)}
+    else if(act==='page'){trace.push(`Read page: ${a[0]} p.${a[1]}`);upd();obs=toolPage(a[0],a[1],ship,pool)}
+    else if(act==='calc'){trace.push('Calculate: '+a[0]);upd();obs=convert(a[0]||'')||'Could not convert.'}
+    else if(act==='ask'){asked=a[0]||'Can you give me more detail about the fault?';trace.push('Asked you: '+asked);upd();break}
+    else break;
+    msgs.push({role:'user',content:'OBSERVATION:\n'+obs});
+    if(pool.length>=6)break;
+  }
+  if(asked){setEl(el,'❓ <b>'+esc(asked)+'</b>');history.push({role:'user',content:q},{role:'assistant',content:'I asked: '+asked});return}
+  if(!pool.length){(await search([q],ship,4)).forEach(h=>pool.push(h));trace.push('Fallback search on your exact words');upd()}
+  if(!pool.length){setEl(el,'Nothing in the loaded manuals matches. Try different words, or check the selected ship.');return}
+  el._src=pool;
+  setEl(el,'<i>Writing the repair procedure…</i>');
+  const ctx=pool.map((h,i)=>`[S${i+1}] (${h.ship} · ${h.doc} · p.${h.page})\n${h.text.slice(0,800)}`).join('\n\n');
+  const fin=[{role:'system',content:SYS},{role:'user',content:`SOURCES:\n${ctx}\n\nWorking hypotheses (general knowledge, NOT verified; mention one only if the sources support it):\n${hyp}\n\n${earlier?'Earlier chat:\n'+earlier+'\n\n':''}QUESTION: ${q}`}];
+  trace.push('Wrote answer from '+pool.length+' manual passages, then checked every figure against them');upd();
+  const out=await gen(fin,{max:800,onToken:t=>{setEl(el,fmt(t));scroll()}});
+  history.push({role:'user',content:q},{role:'assistant',content:stripThink(out).slice(0,600)});
+  finish(el,out,pool,q,ship);
+}
+
+/* ---------- ask (agent pipeline) ---------- */
+async function ensureLLM(el){
+  if(ENG&&ENGID===$('#model').value)return true;
+  if(!navigator.gpu)return false;
+  try{await loadLLM(p=>setEl(el,`<i>Loading AI model… ${Math.round((p.progress||0)*100)}%<br><small>One-time download. Keep this page open.</small></i>`));return true}
+  catch(e){setEl(el,'<i>AI could not load ('+esc(e.message||e)+'). Using search-only mode.</i>');return false}
+}
+async function ask(q){
+  addMsg('user',esc(q).replace(/\n/g,'<br>'));
+  const cv=convert(q);if(cv){addMsg('bot',esc(cv));return}
+  if(!CH.length){addMsg('bot','The library is empty. Open <b>Library</b> and add manuals or import a pack.');return}
+  const ship=$('#ship').value;
+  const el=addMsg('bot','<i>Starting…</i>');
+  const llm=await ensureLLM(el);
+  if(llm&&$('#deep').checked)return deepAsk(q,ship,el);
+  let queries=[q];
+  if(llm){try{setEl(el,'<i>Planning search…</i>');queries=[q,...await rewrite(q,ship)]}catch{}}
+  setEl(el,'<i>Searching manuals…</i>');
+  const hits=await search(queries,ship,5);
+  if(!hits.length){setEl(el,'Nothing in the loaded manuals matches. Try different words, or check the selected ship.');return}
+  el._src=hits;
+  if(!llm){setEl(el,'<b>Best matches in the manuals</b> <small>(AI not running on this device)</small><br><br>'+hits.map((h,i)=>`<b>[S${i+1}]</b> ${esc(h.ship)} · ${esc(h.doc)} p.${h.page}<br>${esc(h.text.slice(0,420))}…`).join('<br><br>'));addSrc(el);return}
+  const ctx=hits.map((h,i)=>`[S${i+1}] (${h.ship} · ${h.doc} · p.${h.page})\n${h.text}`).join('\n\n');
+  const msgs=[{role:'system',content:SYS},...history.slice(-4),{role:'user',content:`SOURCES:\n${ctx}\n\nQUESTION: ${q}`}];
+  setEl(el,'<i>Thinking…</i>');
+  const out=await gen(msgs,{max:800,onToken:t=>{setEl(el,fmt(t));scroll()}});
+  history.push({role:'user',content:q},{role:'assistant',content:stripThink(out).slice(0,600)});
+  finish(el,out,hits,q,ship);
+}
+async function send(){
+  const q=$('#in').value.trim();if(!q||busy)return;$('#in').value='';busy=true;$('#send').disabled=true;
+  try{await ask(q)}catch(e){addMsg('bot','⚠️ '+esc(e.message||e))}
+  busy=false;$('#send').disabled=false;
+}
+
+/* ---------- voice + photo ---------- */
+let rec=null,recChunks=[];
+async function toggleMic(){
+  if(rec){rec.stop();return}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});recChunks=[];rec=new MediaRecorder(stream);
+    rec.ondataavailable=e=>recChunks.push(e.data);
+    rec.onstop=async()=>{
+      stream.getTracks().forEach(t=>t.stop());rec=null;$('#mic').classList.remove('rec');$('#stat').textContent='Transcribing voice…';
+      try{
+        const ab=await new Blob(recChunks).arrayBuffer();
+        const ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+        const buf=await ac.decodeAudioData(ab);const asr=await getASR();const r=await asr(buf.getChannelData(0));
+        $('#in').value=(r.text||'').trim();$('#in').focus();
+      }catch(e){alert('Voice failed: '+(e.message||e)+'\n(The first use needs internet to download the speech model.)')}
+      status();
+    };
+    rec.start();$('#mic').classList.add('rec');
+  }catch(e){alert('Microphone not available: '+(e.message||e))}
+}
+async function photo(file){
+  if(!file)return;const url=URL.createObjectURL(file);
+  const el=addMsg('user',`<img src="${url}" style="max-width:100%;border-radius:8px"><br><small>Reading text from photo…</small>`);
+  try{
+    const t=(await ocr(file)).replace(/\s+/g,' ').trim();
+    el.querySelector('small').textContent=t?'Text found — edit the box below and send.':'No readable text found. Describe the part in words.';
+    $('#in').value=t?`Photo of a part shows these markings: ${t.slice(0,300)}. What is it and how do I service or repair it?`:'';$('#in').focus();
+  }catch(e){el.querySelector('small').textContent='Photo reading failed (needs internet the first time).'}
+}
+const say=t=>{if(!('speechSynthesis' in window))return;speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t.replace(/\[S\d+\]/g,'').replace(/\*\*/g,''));u.rate=.95;speechSynthesis.speak(u)};
+
+/* ---------- events ---------- */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.tab').forEach(t=>t.hidden=t.id!==b.dataset.t);
+  if(b.dataset.t==='logs')renderLogs();
+});
+$('#send').onclick=send;
+$('#in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
+$('#mic').onclick=toggleMic;
+$('#cam').onclick=()=>$('#camin').click();
+$('#camin').onchange=e=>{photo(e.target.files[0]);e.target.value=''};
+$('#mx').onclick=()=>$('#modal').hidden=true;
+$('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').hidden=true};
+$('#msgs').addEventListener('click',e=>{
+  const msg=e.target.closest('.msg');if(!msg)return;
+  const s=e.target.closest('[data-s]');if(s&&msg._src)return showSrc(msg,+s.dataset.s);
+  const a=e.target.closest('[data-a]');if(!a)return;
+  if(a.dataset.a==='say')say(stripThink(msg._text||''));
+  if(a.dataset.a==='card')jobCard(msg);
+  if(a.dataset.a==='log')logRepair(msg);
+});
+$('#model').innerHTML=MODELS.map(([id,l])=>`<option value="${id}">${l}</option>`).join('');
+$('#model').value=LS.get('model',MODELS[0][0]);
+$('#model').onchange=()=>LS.set('model',$('#model').value);
+$('#deep').checked=LS.get('deep',true);
+$('#deep').onchange=()=>LS.set('deep',$('#deep').checked);
+$('#wake').onclick=async()=>{
+  $('#wake').disabled=true;const t=$('#wake');
+  try{await loadLLM(p=>t.textContent=`Downloading… ${Math.round((p.progress||0)*100)}%`);t.textContent='AI ready ✓'}
+  catch(e){alert(e.message||e);t.textContent='Download / wake AI now'}
+  $('#wake').disabled=false;
+};
+$('#add').onclick=async()=>{
+  const ship=$('#newship').value.trim(),files=[...$('#files').files];
+  if(!ship)return alert('Type the ship name first.');if(!files.length)return alert('Choose PDF or Word files.');
+  $('#add').disabled=true;$('#prog').hidden=false;const log=[];
+  try{for(const f of files){
+    const r=await ingest(f,ship,$('#ocr').checked,(t,p)=>{$('#plog').textContent=t;$('#prog').value=p});
+    log.push(`✓ ${f.name}: ${r.chunks} passages${r.imgs?`, ${r.imgs} diagram pages`:''}${r.embOk?'':' (keyword search only — embedding model needs internet once)'}`);
+  }}catch(e){log.push('⚠️ '+(e.message||e))}
+  $('#plog').innerHTML=log.map(esc).join('<br>');$('#prog').hidden=true;$('#add').disabled=false;$('#files').value='';
+  await loadIndex();
+};
+$('#docs').addEventListener('click',async e=>{
+  const k=e.target.dataset.del;if(!k)return;const [s,d]=k.split('|');if(!confirm(`Remove ${d}?`))return;await removeDoc(s,d);await loadIndex();
+});
+$('#exp').onclick=exportPack;
+$('#impb').onclick=()=>$('#imp').click();
+$('#imp').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await importPack(f);await loadIndex();alert('Pack imported.')}catch(x){alert('Import failed: '+(x.message||x))}e.target.value=''};
+$('#wipe').onclick=async()=>{if(!confirm('Delete ALL manuals from this device?'))return;await clearStore('chunks');await clearStore('pages');await loadIndex()};
+$('#loglist').addEventListener('click',async e=>{const id=e.target.dataset.ld;if(!id)return;await del('logs',+id);renderLogs()});
+$('#lexp').onclick=async()=>{const L=await getAll('logs');const b=new Blob([JSON.stringify(L,null,1)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='repair-logs.json';a.click()};
+$('#in').addEventListener('input',e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'});
+addEventListener('online',status);addEventListener('offline',status);
+
+/* ---------- boot ---------- */
+await openDB();await loadIndex();
+addMsg('bot',`<b>Welcome.</b> Pick a ship at the top, then describe the fault, speak it 🎤, or photograph a part 📷. I answer only from the loaded manuals and show the page I used.<br><small>Tip: type “45 ft-lb to Nm” for quick unit conversions. Open <b>Library</b> to add manuals.</small>`);
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(navigator.storage?.persist)navigator.storage.persist();
+</script>
+</body>
+</html>
