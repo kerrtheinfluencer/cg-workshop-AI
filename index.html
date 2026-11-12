@@ -321,8 +321,17 @@ async function loadLLM(onProg){
 }
 async function gen(messages,{max=700,temp=.3,onToken}={}){
   if(BACKEND==='cpu'){
-    let last='';
-    const out=await WLL.createChatCompletion(messages,{nPredict:max,sampling:{temp},onNewToken:(t,pc,cur)=>{last=cur;onToken&&onToken(cur)}});
+    const ac=new AbortController();let stopped=false,cut='',last='';
+    const job=WLL.createChatCompletion(messages,{nPredict:Math.min(max,300),abortSignal:ac.signal,
+      sampling:{temp:Math.min(temp,.25),top_k:40,top_p:.9,penalty_repeat:1.2,penalty_last_n:128},
+      onNewToken:(t,pc,cur)=>{
+        if(stopped)return;last=cur;
+        const w=cur.slice(-60),i=cur.length>200?cur.indexOf(w):-1;
+        if(i>=0&&i<cur.length-60){stopped=true;cut=cur.slice(0,i+60);try{ac.abort()}catch{}return}
+        onToken&&onToken(cur)}});
+    let out='';
+    try{out=await job}catch(e){if(!stopped)throw e}
+    if(stopped)return cut+' …[stopped: the small model started repeating itself]';
     return (typeof out==='string'&&out)||last;
   }
   let out='';const s=await ENG.chat.completions.create({messages,stream:true,temperature:temp,max_tokens:isQwen()?Math.max(max,1400):max});
@@ -419,6 +428,7 @@ function finish(el,out,pool,q,ship){
   let w='';
   if(bad.length)w=`<div class="warn">⚠️ Not found in the cited manual text: <b>${bad.map(esc).join(', ')}</b>. Verify against the manual page before using.</div>`;
   else if(nums)w='<div class="ok">✓ Every figure in this answer appears in the manual pages cited.</div>';
+  if(BACKEND==='cpu')w+='<div class="warn">Small on-device model: it can be wrong or off-topic. Check every step against the manual passages above before acting.</div>';
   setEl(el,fmt(out)+w);addSrc(el);addActions(el,q,ship);scroll();
 }
 const AGENT_SYS=`You are the repair agent for the Jamaica Defence Force Coast Guard marine workshop. You work in steps. Each step, reply with EXACTLY ONE line in one of these forms:
